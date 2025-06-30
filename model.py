@@ -20,7 +20,7 @@ mixed_precision.set_global_policy(policy)
 drive.mount('/content/drive', force_remount=True)
 base_path = '/content/drive/MyDrive/Celeb-DF'
 
-# Utility to safely list directory
+# Utility to safely list directory contents
 def safe_listdir(path, retries=3, delay=2):
     for attempt in range(retries):
         try:
@@ -29,7 +29,7 @@ def safe_listdir(path, retries=3, delay=2):
             time.sleep(delay)
     return []
 
-# Custom data generator
+# Custom data generator for sequence data
 class DeepfakeDataGenerator(Sequence):
     def __init__(self, image_paths, batch_size=2, sequence_length=3, shuffle=True, augment=False, datagen=None):
         super().__init__()
@@ -74,30 +74,35 @@ class DeepfakeDataGenerator(Sequence):
         if self.shuffle:
             np.random.shuffle(self.image_paths)
 
-# Collect image paths with labels
+
 def collect_image_paths(base_path):
     image_paths = []
-    for category in ['celeb-real-output', 'celeb_fake', 'yt-output']:
+    for category in ['celeb-real-output', 'celeb-fake-output', 'yt-output']:
         cat_dir = os.path.join(base_path, category)
         if not os.path.exists(cat_dir):
             continue
         images = safe_listdir(cat_dir)
         for image in images:
             if image.endswith(('.jpg', '.png')):
-                label = 1 if category == 'celeb_fake' else 0
+                label = 1 if category == 'celeb-fake-output' else 0
                 image_paths.append((os.path.join(cat_dir, image), label))
     return image_paths
 
-# Load and shuffle image paths
+
 all_image_paths = collect_image_paths(base_path)
 if len(all_image_paths) == 0:
     raise ValueError("No images found.")
+
+
+num_fake = sum(label for _, label in all_image_paths)
+num_real = len(all_image_paths) - num_fake
+print(f"Label distribution: {num_fake} fake / {num_real} real")
 
 np.random.shuffle(all_image_paths)
 demo_size = 100
 all_image_paths = all_image_paths[:demo_size]
 
-# Split data
+
 sequence_length = 3
 batch_size = 3
 total_sequences = len(all_image_paths) // sequence_length
@@ -107,7 +112,7 @@ val_sequences = total_sequences - train_sequences
 train_paths = all_image_paths[:train_sequences * sequence_length]
 val_paths = all_image_paths[train_sequences * sequence_length:train_sequences * sequence_length + val_sequences * sequence_length]
 
-# Data augmentation
+
 datagen = ImageDataGenerator(
     rotation_range=10,
     width_shift_range=0.1,
@@ -118,7 +123,7 @@ datagen = ImageDataGenerator(
     fill_mode='nearest'
 )
 
-# Create generators
+
 train_generator = DeepfakeDataGenerator(
     train_paths, batch_size=batch_size, sequence_length=sequence_length,
     shuffle=True, augment=True, datagen=datagen
@@ -128,11 +133,11 @@ val_generator = DeepfakeDataGenerator(
     shuffle=False
 )
 
-# Paths to save/load model
+
 checkpoint_path = os.path.join(base_path, 'demo_best_model_efficientnet_lstm.keras')
 final_model_path = os.path.join(base_path, 'demo_deepfake_model_efficientnet_lstm_final.keras')
 
-# Clean up corrupted checkpoint file if needed
+
 try:
     if os.path.exists(checkpoint_path):
         test_model = load_model(checkpoint_path)
@@ -152,7 +157,7 @@ except Exception as e:
         LSTM(128, return_sequences=False),
         Dense(64, activation='relu'),
         Dropout(0.5),
-        Dense(1, activation='sigmoid', dtype='float32')  # Force float32 output
+        Dense(1, activation='sigmoid', dtype='float32')  
     ])
     model.compile(
         optimizer=Adam(learning_rate=0.001),
